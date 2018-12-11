@@ -1,0 +1,5 @@
+* Advent of Code 2018
+
+https://adventofcode.com/2018/
+
+These are my messy solutions. Maybe they don't all work, who knows.
