@@ -87,6 +87,7 @@ class Track:
 
     def tick(self):
         sorted_cars = sorted(self.cars, key=lambda car: car.position)
+        self.time += 1
         for car in sorted_cars:
             if car.crashed:
                 # We are no longer in the game.  So sad.
@@ -152,6 +153,7 @@ def first():
 def second():
     t = Track(data)
     while len(t.cars) > 1:
-        print(t)
         t.tick()
+        print("Time: {}\nCars:\n{}\nCrashed:\n{}".format(
+            t.time, t.cars, t.crashed))
     print(t)
