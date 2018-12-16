@@ -234,6 +234,25 @@ class Map:
             self.time * sum([guy.health for guy in self.elves | self.goblins]))
         )
 
+    def outcome(self):
+        return self.time * sum(
+            [guy.health for guy in self.elves | self.goblins]
+        )
+
+    def help_elves(self, boost):
+        Elf.attack_power = boost
+        nelves = len(self.elves)
+        while self.the_war_is_on() and nelves == len(self.elves):
+            # We are still going and still doing ok
+            self.tick()
+        if nelves != len(self.elves):
+            # Bad news
+            return False
+        self.show()
+        print('Boost was: {}'.format(boost))
+        print('Answer was: {}'.format(self.outcome()))
+        return True
+
     def __getitem__(self, i):
         (x, y) = i
         try:
@@ -321,3 +340,11 @@ def first():
     # Ugh.  Partial rounds don't count.  Off by one on tick count.
     # Real answer is 197025
     Map.load(open('15-input', 'r')).run()
+
+
+def second():
+    m = Map.load(open('15-input', 'r'))
+    boost = 4
+    while not m.help_elves(boost):
+        boost += 1
+        m = Map.load(open('15-input', 'r'))
