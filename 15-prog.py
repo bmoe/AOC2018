@@ -8,6 +8,10 @@ FLOOR = '.'
 TILES = [GOBLIN, ELF, ROCK, FLOOR]
 
 
+def gridkey(pos):
+    return (pos[1], pos[0])
+
+
 class Guy:
     attack_power = 3
     health = 200
@@ -44,7 +48,9 @@ class Guy:
         return self
 
     def __lt__(self, other):
-        return self.pos() < other.pos()
+        x1, y1 = self.pos()
+        x2, y2 = other.pos()
+        return (y1, x1) < (y2, x2)
 
 
 class Elf(Guy):
@@ -85,33 +91,35 @@ class Map:
                 sys.stdout.write('  ')
             sys.stdout.write(', '.join(map(repr, our_guys)))
             sys.stdout.write('\n')
-        sys.stdout.write('Round: {}'.format(self.time))
+        sys.stdout.write('Round: {}\n'.format(self.time))
         sys.stdout.flush()
 
     def open_neighbors(self, pos, match=lambda x: x == FLOOR):
         # Given a position, what adjacent positions
         # match what we are looking for?
         x, y = pos
-        possible = [(x, y + 1), (x, y - 1), (x + 1, y), (x - 1, y)]
+        possible = [(x, y - 1), (x - 1, y), (x + 1, y), (x, y + 1)]
         return [
             (x, y) for (x, y) in possible
             if match(self[x, y])
         ]
 
     def victims(self, guy):
-        return self.open_neighbors(guy.pos(), guy.is_enemy)
+        return [
+            self[pos] for pos in self.open_neighbors(guy.pos(), guy.is_enemy)
+        ]
 
     def paths_next(self, live, shortests):
         # calculate paths_n+1 by extending live paths by on step
         # live :: list of live paths
         # shortests :: dict(pos -> path) shortest path to pos
         still_alive = []
-        for path in live:
-            this_spot = path[0]
+        for path in sorted(live, key=lambda pos: (pos[0][1], pos[0][0])):
+            this_spot = path[-1]
             next_spots = self.open_neighbors(this_spot)
             for pos in next_spots:
                 if pos not in shortests:
-                    newpath = [pos] + path
+                    newpath = path + [pos]
                     still_alive.append(newpath)
                     shortests[pos] = newpath
         return still_alive, shortests
@@ -129,6 +137,11 @@ class Map:
         return targets
 
     def next_step(self, guy):
+        # argh. why here?
+        if self.victims(guy):
+            # We can fight so we won't move
+            return []
+
         acc, pathdir = self.paths_zero(guy.pos())
         if guy in self.elves:
             targets = self.goblins
@@ -142,61 +155,73 @@ class Map:
             for t in targets:
                 # We found a path.  Let's remember the first step on this path.
                 if t in pathdir:
-                    # Last value because we store our path in reverse
-                    # Well, 2nd last because our guy's at the start of the path
-                    candidates.append(pathdir[t][-2])
+                    candidates.append(pathdir[t][1])  # first is our guy
             if candidates:
+                # print('GOT CANDIDATES {}'.format(candidates))
                 break
             acc, pathdir = self.paths_next(acc, pathdir)
 
         return sorted(candidates, key=lambda pos: (pos[1], pos[0]))
 
-    def its_genocide(self):
-        return not self.elves or not self.goblins
+    def the_war_is_on(self):
+        return self.elves and self.goblins
 
     def tick(self):
         order_of_play = sorted(list(self.elves | self.goblins))
-        print('ORDER: {}'.format(order_of_play))
+        # print('ORDER: {}'.format(order_of_play))
 
+        # I think this is wrong.  I think it is MOVE then FIGHT.
         for guy in order_of_play:
             if guy.is_dead():
-                print('oops, messing with a corpse at {}'.format(guy))
+                # print('oops, messing with a corpse at {}'.format(guy))
                 continue
-            victim_positions = self.victims(guy)
-            if victim_positions:
-                victim = self[sorted(victim_positions)[0]]
-                print("{} IS HITTING {}".format(guy, repr(victim)))
+
+            # Move Stage
+            steps = self.next_step(guy)
+            if steps:
+                # print("GUY {} WANTS TO GO TO {}".format(
+                #     repr(guy), steps[0])
+                # )
+                next_x, next_y = steps[0]
+                del self.all_guys[guy.pos()]
+                guy.x = next_x
+                guy.y = next_y
+                self.all_guys[guy.pos()] = guy
+            else:
+                # print("GUY {} HAS NO STEPS".format(repr(guy)))
+                pass
+
+            # Fight Stage
+            victims = self.victims(guy)
+            if victims:
+                # print("{} COULD hit {}".format(repr(guy), repr(victims)))
+                # Pick on the weakest link you can reach
+                victim = sorted(victims, key=lambda g: g.health)[0]
+                # print("{} IS hitting {}".format(repr(guy), repr(victim)))
                 victim -= guy  # pew pew pew
                 if victim.is_dead():
                     # Oof. Remove the corpse.
-                    print('Dude {} he ded'.format(repr(victim)))
+                    # print('Dude {} he ded'.format(repr(victim)))
                     if victim in self.elves:
                         self.elves.remove(victim)
                     else:
                         self.goblins.remove(victim)
                     self.corpses.add(victim)
                     del self.all_guys[victim.pos()]
-            else:
-                steps = self.next_step(guy)
-                print('got: {}'.format(steps))
-                if steps:
-                    print("GUY {} WANTS TO GO TO {}".format(
-                        repr(guy), steps[0])
-                    )
-                    next_x, next_y = steps[0]
-                    del self.all_guys[guy.pos()]
-                    guy.x = next_x
-                    guy.y = next_y
-                    self.all_guys[guy.pos()] = guy
-                else:
-                    # I think this means we are done?
-                    print("GUY {} HAS NO STEPS".format(repr(guy)))
-                    # Some group should have fallen to genocide
-                    # Or maybe some sad group is surrounded and inaccessible
-                    # assert not self.elves or not self.goblins
 
         self.time += 1
         # self.all_guys = {guy.pos(): guy for guy in self.elves | self.goblins}
+
+    def run(self):
+        self.show()
+        print(80 * '=')
+        while self.the_war_is_on():
+            self.tick()
+        self.show()
+        print('Genocide complete at time {}'.format(self.time))
+        print('Answer: {}'.format(
+            self.time * sum([guy.health for guy in self.elves | self.goblins]))
+        )
 
     def __getitem__(self, i):
         (x, y) = i
@@ -217,6 +242,7 @@ class Map:
         goblins = set()
 
         for y, row in enumerate(lines):
+            row = row.strip()
             grid_row = []
             for x, sq in enumerate([ch for ch in row]):
                 if sq == 'E':
@@ -232,86 +258,8 @@ class Map:
         return cls(grid, elves, goblins)
 
 
-# the_map = None
-# theelves = set()
-# thegoblins = set()
-# max_x = 0
-# max_y = 0
-
-
-# def load_data(data):
-#     global the_map, max_x, max_y
-#     the_map = []
-
-#     if hasattr(data, 'readlines'):
-#         lines = data.readlines()
-#     else:
-#         lines = data.strip().split('\n')
-
-#     for y, row in enumerate(lines):
-#         the_map.append(row)
-#         for x, sq in enumerate([ch for ch in row]):
-#             if sq == 'E':
-#                 theelves.add(Elf(x, y))
-#             if sq == 'G':
-#                 thegoblins.add(Goblin(x, y))
-
-#     max_x = len(the_map[0]) - 1
-#     max_y = len(the_map) - 1
-
-
-# def load_file(fname):
-#     load_data(open(fname, 'r').read())
-
-
-# def _show_row(y, row, all_guys):
-#     guys = []
-#     for x, guy in enumerate(row):
-#         if guy in [GOBLIN, ELF]:
-#             try:
-#                 assert (x, y) in all_guys
-#             except AssertionError:
-#                 print('x,y guy :{},{}  {}\n{}'.format(x, y, guy, all_guys))
-#                 print(the_map)
-#                 raise
-#             guys.append(repr(all_guys[(x, y)]))
-#     return ''.join(row) + '  ' + ', '.join(guys)
-
-
-# def showstr():
-#     all_guys = {elf.pos(): elf for elf in theelves}
-#     all_guys.update({goblin.pos(): goblin for goblin in thegoblins})
-
-#     print('ALL GUYS IN: {}'.format(all_guys))
-#     return '\n'.join(
-#         _show_row(y, row, all_guys)
-#         for y, row in enumerate(the_map))
-
-
-# def show(overlay=None, overlay_ch='!'):
-#     all_guys = {elf.pos(): elf for elf in theelves}
-#     all_guys.update({goblin.pos(): goblin for goblin in thegoblins})
-
-#     if overlay:
-#         overlay = {k: overlay_ch for k in overlay}
-#     else:
-#         overlay = overlay or {}
-
-#     for y, row in enumerate(the_map):
-#         our_guys = []
-#         for x, sq in enumerate(row):
-#             sys.stdout.write(overlay.get((x, y), sq))
-#             # remember scores for this row
-#             if (x, y) in all_guys:
-#                 our_guys.append(all_guys[(x, y)])
-#         if our_guys:
-#             sys.stdout.write('  ')
-#         sys.stdout.write(', '.join(map(repr, our_guys)))
-#         sys.stdout.write('\n')
-#     sys.stdout.flush()
-
-
-goober = """
+# Super baby movement test
+test1 = """
 #######
 #.E...#
 #.....#
@@ -319,7 +267,8 @@ goober = """
 #######
 """
 
-goober2 = """
+# Simple movement and fighting
+test2 = """
 #########
 #G..G..G#
 #.......#
@@ -331,8 +280,21 @@ goober2 = """
 #########
 """
 
-
-goober3 = """
+# More obstacles
+# Answer is 27730
+#   200+131+59+200 = 590
+#   47 * 590 = 27730
+#
+#  After 47 rounds:
+#  #######
+#  #G....#   G(200)
+#  #.G...#   G(131)
+#  #.#.#G#   G(59)
+#  #...#.#
+#  #....G#   G(200)
+#  #######
+#
+test3 = """
 #######
 #.G...#
 #...EG#
@@ -343,38 +305,6 @@ goober3 = """
 """
 
 
-# def badstep():
-#     all_guys = dict(elves)
-#     all_guys.update(goblins)
-
-#     enemies_of = {
-#         'E': goblins,
-#         'G': elves,
-#     }
-
-#     order_of_play = sorted(all_guys.keys())
-#     print('ORDER: {}'.format(order_of_play))
-
-#     for guy_pos in order_of_play:
-#         guy = all_guys[guy_pos]
-#         victims = can_attack(*guy_pos, guy.enemy)
-#         if victims:
-#             victim_pos = sorted(victims)[0]
-#             print("{} IS HITTING {}".format(guy_pos, victim_pos))
-#             all_guys[x]
-#         else:
-#             targets = target_spots(enemies_of[guy.glyph].keys())
-#             print('Tryna find step {} to {}'.format(guy_pos, targets))
-#             steps = next_step(guy_pos, targets)  # oh lordy
-#             print('got: {}'.format(steps))
-#             if steps:
-#                 print("GUY {} WANTS TO GO TO {}".format(guy_pos, steps[0]))
-#             else:
-#                 # I think this means we are done?
-#                 print("GUY {} HAS NO STEPS".format(guy_pos))
-#                 assert not targets, 'Is {} not empty?'.format(targets)
-
-
-# if __name__ == "__main__":
-#     # load_file('15-input-test')
-#     load_data(goober2)
+def first():
+    # This got 199800.  But that is too high somehow.  Shit.
+    Map.load(open('15-input', 'r')).run()
