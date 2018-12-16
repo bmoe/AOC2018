@@ -182,6 +182,11 @@ class Map:
                 # print('oops, messing with a corpse at {}'.format(guy))
                 continue
 
+            if not self.the_war_is_on():
+                # We are done.  We don't want to count time here
+                # since we are only counting FULL rounds of this mess.
+                return
+
             # Move Stage
             steps = self.path_candidates(guy)
             if steps:
@@ -313,4 +318,6 @@ test3 = """
 
 def first():
     # This got 199800.  But that is too high somehow.  Shit.
+    # Ugh.  Partial rounds don't count.  Off by one on tick count.
+    # Real answer is 197025
     Map.load(open('15-input', 'r')).run()
