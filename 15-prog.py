@@ -117,6 +117,9 @@ class Map:
         for path in sorted(live, key=lambda pos: (pos[0][1], pos[0][0])):
             this_spot = path[-1]
             next_spots = self.open_neighbors(this_spot)
+            # We count on neighbors being in reading order
+            # So the first path we find for a position is the
+            # most interesting, reading-order-wise.
             for pos in next_spots:
                 if pos not in shortests:
                     newpath = path + [pos]
@@ -134,9 +137,10 @@ class Map:
         targets = []
         for guy in guys:
             targets.extend(self.open_neighbors(guy.pos()))
+        targets.sort(key=gridkey)
         return targets
 
-    def next_step(self, guy):
+    def path_candidates(self, guy):
         # argh. why here?
         if self.victims(guy):
             # We can fight so we won't move
@@ -144,24 +148,26 @@ class Map:
 
         acc, pathdir = self.paths_zero(guy.pos())
         if guy in self.elves:
-            targets = self.goblins
+            target_guys = self.goblins
         else:
             assert guy in self.goblins
-            targets = self.elves
-        targets = self.target_spots(targets)
+            target_guys = self.elves
+        target_spots = self.target_spots(target_guys)
         candidates = []
         while acc:
             # Check if a target has a path
-            for t in targets:
+            for t in target_spots:
                 # We found a path.  Let's remember the first step on this path.
                 if t in pathdir:
-                    candidates.append(pathdir[t][1])  # first is our guy
+                    # This is our guy (target, first-step-on-path)
+                    candidates.append((t, pathdir[t][1]))
             if candidates:
                 # print('GOT CANDIDATES {}'.format(candidates))
                 break
             acc, pathdir = self.paths_next(acc, pathdir)
 
-        return sorted(candidates, key=lambda pos: (pos[1], pos[0]))
+        # Sort by target
+        return sorted(candidates, key=lambda pos: (pos[0][1], pos[0][0]))
 
     def the_war_is_on(self):
         return self.elves and self.goblins
@@ -177,12 +183,12 @@ class Map:
                 continue
 
             # Move Stage
-            steps = self.next_step(guy)
+            steps = self.path_candidates(guy)
             if steps:
                 # print("GUY {} WANTS TO GO TO {}".format(
                 #     repr(guy), steps[0])
                 # )
-                next_x, next_y = steps[0]
+                next_x, next_y = steps[0][1]
                 del self.all_guys[guy.pos()]
                 guy.x = next_x
                 guy.y = next_y
