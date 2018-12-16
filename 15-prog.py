@@ -12,6 +12,7 @@ class Guy:
     attack_power = 3
     health = 200
     glyph = '-'
+    enemy = None
 
     def __repr__(self):
         return '{}({})'.format(self.glyph, self.health)
@@ -28,10 +29,12 @@ class Guy:
 
 class Elf(Guy):
     glyph = 'E'
+    enemy = 'G'
 
 
 class Goblin(Guy):
     glyph = 'G'
+    enemy = 'E'
 
 
 the_map = None
@@ -112,16 +115,22 @@ def show(overlay=None, overlay_ch='!'):
     sys.stdout.flush()
 
 
-def open_neighbors(x, y):
+def open_neighbors(x, y, match=FLOOR):
+    # Given a position, what adjacent positions
+    # match what we are looking for?
     possible = [(x, y + 1), (x, y - 1), (x + 1, y), (x - 1, y)]
     return [
         (x, y) for (x, y) in possible
         if (
                 x >= 0 and y >= 0 and
                 x <= max_x and y <= max_y and
-                the_map[y][x] == FLOOR
+                the_map[y][x] == match
         )
     ]
+
+
+def can_attack(x, y, enemy):
+    return open_neighbors(x, y, enemy)
 
 
 def paths_next(live, shortests):
@@ -146,4 +155,84 @@ def paths_zero(guy):
     return live, shortests
 
 
-load_file('15-input-test')
+def target_spots(guys):
+    "Get a bunch of coordinates, return a bunch of nearby squares"
+    targets = []
+    for guy in guys:
+        targets.extend(open_neighbors(*guy))
+    return targets
+
+
+def next_step(guy, targets):
+    acc, pathdir = paths_zero(guy)
+    candidates = []
+    while acc:
+        # Check if a target has a path
+        for t in targets:
+            # We found a path.  Let's remember the first step on this path.
+            if t in pathdir:
+                # Last value because we store our path in reverse
+                candidates.append(pathdir[t][-1])
+        if candidates:
+            break
+        acc, pathdir = paths_next(acc, pathdir)
+
+    return sorted(candidates, key=lambda pos: (pos[1], pos[0]))
+
+
+goober = """
+#######
+#.E...#
+#.....#
+#...G.#
+#######
+"""
+
+goober2 = """
+#########
+#G..G..G#
+#.......#
+#.......#
+#G..E..G#
+#.......#
+#.......#
+#G..G..G#
+#########
+"""
+
+
+def step():
+    all_guys = dict(elves)
+    all_guys.update(goblins)
+
+    enemies_of = {
+        'E': goblins,
+        'G': elves,
+    }
+
+    order_of_play = sorted(all_guys.keys())
+    print('ORDER: {}'.format(order_of_play))
+
+    for guy_pos in order_of_play:
+        guy = all_guys[guy_pos]
+        victims = can_attack(*guy_pos, guy.enemy)
+        if victims:
+            victim_pos = sorted(victims)[0]
+            print("{} IS HITTING {}".format(guy_pos, victim_pos))
+            all_guys[x]
+        else:
+            targets = target_spots(enemies_of[guy.glyph].keys())
+            print('Tryna find step {} to {}'.format(guy_pos, targets))
+            steps = next_step(guy_pos, targets)  # oh lordy
+            print('got: {}'.format(steps))
+            if steps:
+                print("GUY {} WANTS TO GO TO {}".format(guy_pos, steps[0]))
+            else:
+                # I think this means we are done?
+                print("GUY {} HAS NO STEPS".format(guy_pos))
+                assert not targets, 'Is {} not empty?'.format(targets)
+
+
+if __name__ == "__main__":
+    # load_file('15-input-test')
+    load_data(goober2)
