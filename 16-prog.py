@@ -122,3 +122,92 @@ def first(inp):
         init = next(lines)
 
     return sample_count
+
+
+def second(inp):
+    if hasattr(inp, 'readlines'):
+        lines = iter(map(lambda line: line.strip('\n'), inp.readlines()))
+    else:
+        lines = iter(inp.split('\n'))
+
+    pat = re.compile(r'.*:\s*(\[\d+(,\s*\d+)+\])')
+    init = next(lines)
+    # Figure out opcode mappings  opcode <-> opnum
+    # Ultimately want opnum -> opcode
+
+    fails = collections.defaultdict(set)
+    while init:
+        # Go through each test seeing which ones pass
+        # for which opecodes
+        init_state = eval(re.match(pat, init).group(1))
+
+        instr = next(lines)
+        instr = map(int, instr.split())
+        assert len(instr) == 4, "bad instr input '{}'".format(instr)
+
+        expect = next(lines)
+        expected = Registers(eval(re.match(pat, expect).group(1)))
+        assert next(lines) == ''
+
+        opnum = instr[0]
+        op_args = instr[1:]
+
+        for opcode in OPCODES:
+            r = Registers(init_state)
+            execute(opcode, *op_args + [r])
+
+            # Start ruling out / accepting
+            # whether opecode is represented by opnum
+            if r == expected:
+                # Ugh.  I don't feel like finding out if I have
+                # to implement __ne__ or __neq__
+                pass
+            else:
+                fails[opnum].add(opcode)
+
+        init = next(lines)
+
+    # Now we have a list of test failures
+    # Let's construct opnum -> [opcode] -- possible mappings
+    assert len(fails) in [15, 16]
+    possibles = {}
+    for opnum in range(0, 16):
+        possibles[opnum] = set(OPCODES) - fails[opnum]
+    print(possibles)
+
+    # This is the mapping we want -- construct it
+    # (why such a dumb name?)
+    numcodemap = {}
+
+    i = 0
+    while possibles and i < 16:
+        i += 1
+        newguys = []
+        for opnum, candidates in possibles.items():
+            if len(candidates) == 1:
+                newguys.append((opnum, candidates.pop()))
+        for (opnum, code) in newguys:
+            numcodemap[opnum] = code
+            # Nobody else can claim this code
+            for codes in possibles.values():
+                if code in codes:
+                    codes.remove(code)
+            # Stop trying to map the opnum
+            del possibles[opnum]
+
+    assert not possibles
+
+    # Run the program
+    r = Registers()
+    for srctext in lines:
+        if not srctext:
+            print("BLANK")
+            continue
+
+        progline = map(int, srctext.split())
+        opcode = numcodemap[progline[0]]
+        op_args = progline[1:]
+        execute(opcode, *op_args + [r])
+
+    print(r)
+    return r.get(0)
