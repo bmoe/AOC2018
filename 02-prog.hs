@@ -24,6 +24,18 @@ first codes =
     twos = ['x' | c <- map fromList (map elems counted), 2 `member` c]
     threes = ['x' | c <- map fromList (map elems counted), 3 `member` c]
 
+
+diffByOne _ [] = False
+diffByOne [] _ = False
+diffByOne (x:ys) (y:xs)
+  | x /= y = xs == ys
+  | otherwise = diffByOne xs ys
+
+secondPuzzle codes =
+  [a | (a, b) <- zip correctA correctB, a == b]
+  where
+    (correctA, correctB) = head [(a, b) | a <- codes, b <- codes, diffByOne a b]
+
 main :: IO ()
 main = do
   d <- readFile "02-input"
@@ -31,3 +43,7 @@ main = do
   print . first $ testData
   putStr "Real First Result: "
   print . first $ lines d
+  putStr "Second - correct codes: "
+  print . head $ [(a, b) | a <- lines d, b <- lines d, diffByOne a b]
+  putStr "Second - common characters: "
+  print . secondPuzzle $ lines d
